@@ -10,7 +10,56 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
+#define IP "67.188.126.64"
 #define PORT "4444"
 #define MAXDATASIZE 100
 
+int main(int argc, char* argv[])
+{
+  struct addrinfo hints, *servinfo, *p;
+  char s[INET_ADDRSTRLEN];
+  int sockfd, numbytes;
+  char buf[MAXDATASIZE];
 
+  memset(&hints, 0, sizeof hints);
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+
+  int rv = getaddrinfo(IP, PORT, &hints, &servinfo);
+  if (rv != 0) {
+    fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+    return 1;
+  }
+
+  for(p = servinfo; p != NULL; p = p->ai_next) {
+    sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+    if (sockfd == -1) {
+      perror("client: socket");
+      continue;
+    }
+    if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
+      close(sockfd);
+      perror("client: connect");
+      continue;
+    }
+    break;
+  }
+
+  if (p == NULL) {
+    fprintf(stderr, "client: failed to connect\n");
+    return 2;
+  }
+
+  inet_ntop(p->ai_family, &(((struct sockaddr_in*)p->ai_addr)->sin_addr), 
+    s, sizeof s);
+  printf("client: connecting to %s\n", s);
+  freeaddrinfo(servinfo); // all done with this structure
+  if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
+    perror("recv");
+    exit(1);
+  }
+  buf[numbytes] = '\0';
+  printf("client: received '%s'\n",buf);
+  close(sockfd);
+  return 0;
+}
