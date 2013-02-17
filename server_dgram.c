@@ -67,7 +67,10 @@ int main(void)
   freeaddrinfo(servinfo);
   printf("listener: waiting to recvfrom...\n");
   addr_len = sizeof their_addr;
-  if ((numbytes = recvfrom(sockfd, buf, MAXBUFLEN-1 , 0,
+
+  uint32_t intbuf[1];  
+
+  if ((numbytes = recvfrom(sockfd, /*buf*/intbuf, /*MAXBUFLEN-1*/4 , 0,
     (struct sockaddr *)&their_addr, &addr_len)) == -1) {
     perror("recvfrom");
     exit(1);
@@ -79,17 +82,17 @@ int main(void)
   &(((struct sockaddr_in*)(struct sockaddr *)&their_addr)->sin_addr), s, sizeof s));
   printf("listener: packet is %d bytes long\n", numbytes);
 
+  intbuf[0] = ntohl(intbuf[0]);
+//  buf[numbytes] = '\0';
 
-  buf[numbytes] = '\0';
+//  int i;
+//  uint32_t temp;
+//  for (i = 0; i < numbytes; i++){
+//	temp = ntohl((uint32_t) buf[i]);
+//	buf[i] = temp;
+//  }
 
-  int i;
-  uint32_t temp;
-  for (i = 0; i < numbytes; i++){
-	temp = ntohl((uint32_t) buf[i]);
-	buf[i] = temp;
-  }
-
-  printf("listener: packet contains %ld \n", buf);
+  printf("listener: packet contains %d \n", intbuf[0]);
   close(sockfd);
   return 0;
 }

@@ -29,6 +29,14 @@ void send_dgram(int sockfd, const void *buf, size_t len,
   printf("talker: sent %d bytes to %s\n", numbytes, IP);
 
 
+//  if (check == 1) {
+//    char recvbuff[];
+//    numbytes = recvfrom(sockfd, recvbuff, 4, 0, to, tolen);
+//    if (0xffffffff & recvbuff) {
+//        printf("Message reciept confirmed.\n");
+//    } else {
+//      printf("Message not confirmed
+
 }
 
 
@@ -76,7 +84,11 @@ int main(int argc, char *argv[])
   FILE *fp = fopen(FILEPATH, "rb");
   fread(content, info.st_size, 1, fp);
 
-  send_dgram(sockfd, (int32_t*)&info.st_size, sizeof(int32_t), p->ai_addr, p->ai_addrlen, 1);
+
+  uint32_t netlong = htonl((uint32_t) info.st_size);
+  printf("Network long: %d\n", netlong);
+  printf("address: %d\n", ntohl((uint32_t) &netlong));
+  send_dgram(sockfd, &netlong, sizeof(uint32_t), p->ai_addr, p->ai_addrlen, 1);
 
 
   char* curr_dgram = (char*) malloc((1 + DGRAM_SIZE) * (sizeof(char)));
