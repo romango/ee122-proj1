@@ -35,6 +35,8 @@ int main(void)
   int numbytes;
   struct sockaddr_storage their_addr;
   char buf[MAXBUFLEN];
+  int size;
+
   socklen_t addr_len;
   char s[INET_ADDRSTRLEN];
   memset(&hints, 0, sizeof hints);
@@ -70,13 +72,24 @@ int main(void)
     perror("recvfrom");
     exit(1);
   }
+
   //get_in_addr((struct sockaddr *)&their_addr)
   printf("listener: got packet from %s\n",
   inet_ntop(their_addr.ss_family,
   &(((struct sockaddr_in*)(struct sockaddr *)&their_addr)->sin_addr), s, sizeof s));
   printf("listener: packet is %d bytes long\n", numbytes);
+
+
   buf[numbytes] = '\0';
-  printf("listener: packet contains \"%s\"\n", buf);
+
+  int i;
+  uint32_t temp;
+  for (i = 0; i < numbytes; i++){
+	temp = ntohl((uint32_t) buf[i]);
+	buf[i] = temp;
+  }
+
+  printf("listener: packet contains %ld \n", buf);
   close(sockfd);
   return 0;
 }
