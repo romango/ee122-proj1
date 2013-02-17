@@ -16,6 +16,8 @@
 #define MAXBUFLEN 100
 
 // get sockaddr, IPv4 or IPv6:
+
+/*
 void *get_in_addr(struct sockaddr *sa)
 {
   if (sa->sa_family == AF_INET) {
@@ -23,6 +25,7 @@ void *get_in_addr(struct sockaddr *sa)
   }
   return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
+*/
 
 int main(void)
 {
@@ -33,9 +36,9 @@ int main(void)
   struct sockaddr_storage their_addr;
   char buf[MAXBUFLEN];
   socklen_t addr_len;
-  char s[INET6_ADDRSTRLEN];
+  char s[INET_ADDRSTRLEN];
   memset(&hints, 0, sizeof hints);
-  hints.ai_family = AF_UNSPEC; // set to AF_INET to force IPv4
+  hints.ai_family = AF_INET; // set to AF_INET to force IPv4
   hints.ai_socktype = SOCK_DGRAM;
   hints.ai_flags = AI_PASSIVE; // use my IP
   if ((rv = getaddrinfo(NULL, MYPORT, &hints, &servinfo)) != 0) {
@@ -67,13 +70,13 @@ int main(void)
     perror("recvfrom");
     exit(1);
   }
+  //get_in_addr((struct sockaddr *)&their_addr)
   printf("listener: got packet from %s\n",
   inet_ntop(their_addr.ss_family,
-  get_in_addr((struct sockaddr *)&their_addr), s, sizeof s));
+  &(((struct sockaddr_in*)(struct sockaddr *)&their_addr)->sin_addr), s, sizeof s));
   printf("listener: packet is %d bytes long\n", numbytes);
   buf[numbytes] = '\0';
   printf("listener: packet contains \"%s\"\n", buf);
   close(sockfd);
   return 0;
 }
-
