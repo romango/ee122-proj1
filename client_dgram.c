@@ -15,6 +15,24 @@
 #define SERVERPORT "4444"
 #define IP "67.188.126.64"
 #define FILEPATH "pic.jpg"
+#define DGRAM_SIZE 1024
+
+void send_dgram(int sockfd, const void *buf, size_t len, 
+  const struct sockaddr *to, socklen_t tolen, int check) {
+
+  int numbytes = sendto(sockfd, buf, len, 0, to, tolen);
+  if (numbytes == -1) {
+    perror("talker: sendto");
+    exit(1);
+  }
+
+  printf("talker: sent %d bytes to %s\n", numbytes, IP);
+
+
+}
+
+
+
 
 // the port users will be connecting to
 int main(int argc, char *argv[])
@@ -58,22 +76,32 @@ int main(int argc, char *argv[])
   FILE *fp = fopen(FILEPATH, "rb");
   fread(content, info.st_size, 1, fp);
 
-
-  numbytes = sendto(sockfd, content, info.st_size, 0,p->ai_addr, p->ai_addrlen);
-
+  send_dgram(sockfd, (int32_t*)&info.st_size, sizeof(int32_t), p->ai_addr, p->ai_addrlen, 1);
 
 
+  char* curr_dgram = (char*) malloc((1 + DGRAM_SIZE) * (sizeof(char)));
+
+ // int packetnum;
+ // for (packetnum = 
+  
+ // curr_dgram[0] = (char) header;
+ // int i;
+ // for (i = 1
+
+  
 
 
-//  if ((numbytes = sendto(sockfd, argv[1], strlen(argv[1]), 0,
-//    p->ai_addr, p->ai_addrlen)) == -1) {
-  if (numbytes == -1) {
-    perror("talker: sendto");
-    exit(1);
-  }
+//numbytes = sendto(sockfd, content, info.st_size, 0,p->ai_addr, p->ai_addrlen);
+
+
+  //send_dgram(sockfd, content, 4, p->ai_addr, p->ai_addrlen, 0);
+
+
+
   freeaddrinfo(servinfo);
-  printf("talker: sent %d bytes to %s\n", numbytes, IP);
+  free(content);
   close(sockfd);
   return 0;
 }
+
 
