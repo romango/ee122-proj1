@@ -17,6 +17,7 @@
 #define FILEPATH "pic.jpg"
 #define DGRAM_SIZE 1024
 #define HEADER_SIZE 4
+#define TIMEOUT 10 // in seconds
 
 int send_dgram(int sockfd, const void *buf, size_t len, 
   const struct sockaddr *to, socklen_t tolen, int check) {
@@ -37,14 +38,18 @@ int send_dgram(int sockfd, const void *buf, size_t len,
     printf("Waiting for confirmation...\n");
 
     numbytes = recvfrom(sockfd, recvbuff, 4, 0, from, fromlen);
-    if (0xffffffff == recvbuff[0]) {
-      printf("Message reciept confirmed.\n");
+    if (numbytes < 0) { // operation timed out
+      printf("Confirmation not recieved, sending again...\n");
+      send_dgram(sockfd, buf, len, to, tolen, check);
     } else {
-      printf("Message not confirmed, expecting 0xffffffff recieved %d\n", recvbuff[0]);
-      return -1;
-    }
+      if (0xffffffff == recvbuff[0]) {
+        printf("Message reciept confirmed.\n");
+      } else {
+        printf("Message not confirmed, expecting 0xffffffff recieved %d\n", recvbuff[0]);
+        send_dgram(sockfd, buf, len, to, tolen, check);
+      }
+    }  
   }
-
   return 0;
 
 }
@@ -79,9 +84,15 @@ int main(int argc, char *argv[])
     fprintf(stderr, "talker: failed to bind socket\n");
     return 2;
   }
+
+
+  // set socket timeout
+  struct timeval tv;
+  tv.tv_sec = TIMEOUT;
+  setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval*)&tv, sizeof(struct timeval));
+
   
   //prepare file to be sent.
-  
   struct stat info;
   rv = stat(FILEPATH, &info);
   if (rv !=0 ) {
@@ -101,7 +112,7 @@ int main(int argc, char *argv[])
   send_dgram(sockfd, &netlong, sizeof(uint32_t), p->ai_addr, p->ai_addrlen, 1);
 
 
-  char* curr_dgram = (char*) malloc((1 + DGRAM_SIZE) * (sizeof(char)));
+  char* curr_dgram = (char*) malloc((HEADER_SIZE + DGRAM_SIZE) * (sizeof(char)));
 //  char header[HEADER_SIZE];
   uint32_t packetnum;
   for (packetnum = 0; packetnum <  info.st_size/DGRAM_SIZE + 1; packetnum++) {
@@ -112,7 +123,7 @@ int main(int argc, char *argv[])
       curr_dgram[i+HEADER_SIZE] = content[packetnum*DGRAM_SIZE+i];
     }
 
-    send_dgram(sockfd, curr_dgram, DGRAM_SIZE+HEADER_SIZE, p->ai_addr, p->ai_addrlen, 0);
+    send_dgram(sockfd, curr_dgram, DGRAM_SIZE+HEADER_SIZE, p->ai_addr, p->ai_addrlen, 1);
 
   }
   
