@@ -12,9 +12,11 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <signal.h>
 #define PORT "4444" // the port users will be connecting to
 #define BACKLOG 10 // how many pending connections queue will hold
+#define FILEPATH "test.png"
 
 void sigchld_handler(int s)
 {
@@ -29,6 +31,24 @@ void *get_in_addr(struct sockaddr *sa)
   }
   return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
+
+int sendall(int s, char *buf, int *len)
+{
+    int total = 0;        // how many bytes we've sent
+    int bytesleft = *len; // how many we have left to send
+    int n;
+
+    while(total < *len) {
+        n = send(s, buf+total, bytesleft, 0);
+        if (n == -1) { break; }
+        total += n;
+        bytesleft -= n;
+    }
+
+    *len = total; // return number actually sent here
+
+    return n==-1?-1:0; // return -1 on failure, 0 on success
+} 
 
 int main(void)
 {
@@ -83,6 +103,26 @@ int main(void)
     perror("sigaction");
     exit(1);
   }
+
+    //prepare file to be sent.
+  struct stat info;
+  rv = stat(FILEPATH, &info);
+  if (rv !=0 ) {
+    fprintf(stderr, "Error reading file.\n");
+    exit(1);
+  }
+
+  printf("File Size: %d\n", (int)info.st_size);
+  char* content = (char*) malloc(info.st_size * (sizeof (char)));
+
+  uint32_t netlong = htonl((uint32_t) info.st_size);
+
+  FILE *fp = fopen(FILEPATH, "rb");
+  fread(content, info.st_size, 1, fp);
+
+  int size = (int)info.st_size;
+
+
   printf("server: waiting for connections...\n");
   while(1) { // main accept() loop
     sin_size = sizeof their_addr;
@@ -96,14 +136,21 @@ int main(void)
     printf("server: got connection from %s\n", s);
     if (!fork()) { // this is the child process
       close(sockfd); // child doesn't need the listener
-      if (send(new_fd, "Hello, world!", 13, 0) == -1) {
+	  if (send(new_fd, &netlong, info.st_size, 0) == -1) {
+        perror("send");
+      }
+      if (sendall(new_fd, content, &size) == -1) {
         perror("send");
       }
       close(new_fd);
       exit(0);
     }
+	printf("total sent: %d\n", size);
     close(new_fd); // parent doesn't need this
+
   }
+
+  free(content);
   return 0;
 }
 
