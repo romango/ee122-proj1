@@ -1,5 +1,5 @@
 /*
-** talker.c -- a datagram "client" demo
+** needs to be compiled with -lm !
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,12 +12,14 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/stat.h>
+#include <math.h>
 #define SERVERPORT "4444"
 #define IP "67.188.126.64"
-#define FILEPATH "pic.jpg"
+#define FILEPATH "spongebob.jpg"
 #define DGRAM_SIZE 1024
 #define HEADER_SIZE 4
 #define TIMEOUT 10 // in seconds
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 int send_dgram(int sockfd, const void *buf, size_t len, 
   const struct sockaddr *to, socklen_t tolen, int check) {
@@ -31,14 +33,17 @@ int send_dgram(int sockfd, const void *buf, size_t len,
   printf("Sent %d bytes to %s\n", numbytes, IP);
 
   if (check == 1) {
-    struct sockaddr *from;
-    socklen_t *fromlen;
+    struct sockaddr from;
+    socklen_t fromlen;
+    fromlen = sizeof(from);
+
 
     uint32_t recvbuff[1];
     printf("Waiting for confirmation...\n");
 
-    numbytes = recvfrom(sockfd, recvbuff, 4, 0, from, fromlen);
-    if (numbytes < 0) { // operation timed out
+    numbytes = recvfrom(sockfd, recvbuff, 4, 0, &from, &fromlen);
+    //printf("%d\n", numbytes);
+    if (numbytes == -1) { // operation timed out
       printf("Confirmation not recieved, sending again...\n");
       send_dgram(sockfd, buf, len, to, tolen, check);
     } else {
@@ -105,25 +110,21 @@ int main(int argc, char *argv[])
   FILE *fp = fopen(FILEPATH, "rb");
   fread(content, info.st_size, 1, fp);
 
-
+  // send the file size
   uint32_t netlong = htonl((uint32_t) info.st_size);
-  //printf("Network long: %d\n", netlong);
-  //printf("address: %d\n", ntohl((uint32_t) &netlong));
   send_dgram(sockfd, &netlong, sizeof(uint32_t), p->ai_addr, p->ai_addrlen, 1);
 
-
   char* curr_dgram = (char*) malloc((HEADER_SIZE + DGRAM_SIZE) * (sizeof(char)));
-//  char header[HEADER_SIZE];
   uint32_t packetnum;
-  for (packetnum = 0; packetnum <  info.st_size/DGRAM_SIZE + 1; packetnum++) {
-    
-    sprintf(curr_dgram, "%d", packetnum);
+  for (packetnum = 0; packetnum <  ceil(((double) info.st_size)/DGRAM_SIZE); packetnum++) {
+    memcpy(curr_dgram, &packetnum, 4);
+    //sprintf(curr_dgram, "%d", packetnum);
     int i;
-    for (i = 0; i < DGRAM_SIZE; i++) {
+    for (i = 0; i < MIN(DGRAM_SIZE, info.st_size - packetnum*DGRAM_SIZE); i++) {
       curr_dgram[i+HEADER_SIZE] = content[packetnum*DGRAM_SIZE+i];
     }
-
-    send_dgram(sockfd, curr_dgram, DGRAM_SIZE+HEADER_SIZE, p->ai_addr, p->ai_addrlen, 1);
+    printf("Sending part %d of %d...\n", packetnum+1, (int) ceil(((double) info.st_size)/DGRAM_SIZE));
+    send_dgram(sockfd, curr_dgram, HEADER_SIZE+MIN(DGRAM_SIZE, info.st_size - packetnum*DGRAM_SIZE), p->ai_addr, p->ai_addrlen, 1);
 
   }
   
