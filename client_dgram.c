@@ -16,8 +16,9 @@
 #define IP "67.188.126.64"
 #define FILEPATH "pic.jpg"
 #define DGRAM_SIZE 1024
+#define HEADER_SIZE 4
 
-void send_dgram(int sockfd, const void *buf, size_t len, 
+int send_dgram(int sockfd, const void *buf, size_t len, 
   const struct sockaddr *to, socklen_t tolen, int check) {
 
   int numbytes = sendto(sockfd, buf, len, 0, to, tolen);
@@ -26,16 +27,25 @@ void send_dgram(int sockfd, const void *buf, size_t len,
     exit(1);
   }
 
-  printf("talker: sent %d bytes to %s\n", numbytes, IP);
+  printf("Sent %d bytes to %s\n", numbytes, IP);
 
+  if (check == 1) {
+    struct sockaddr *from;
+    socklen_t *fromlen;
 
-//  if (check == 1) {
-//    char recvbuff[];
-//    numbytes = recvfrom(sockfd, recvbuff, 4, 0, to, tolen);
-//    if (0xffffffff & recvbuff) {
-//        printf("Message reciept confirmed.\n");
-//    } else {
-//      printf("Message not confirmed
+    uint32_t recvbuff[1];
+    printf("Waiting for confirmation...\n");
+
+    numbytes = recvfrom(sockfd, recvbuff, 4, 0, from, fromlen);
+    if (0xffffffff == recvbuff[0]) {
+      printf("Message reciept confirmed.\n");
+    } else {
+      printf("Message not confirmed, expecting 0xffffffff recieved %d\n", recvbuff[0]);
+      return -1;
+    }
+  }
+
+  return 0;
 
 }
 
@@ -86,15 +96,25 @@ int main(int argc, char *argv[])
 
 
   uint32_t netlong = htonl((uint32_t) info.st_size);
-  printf("Network long: %d\n", netlong);
-  printf("address: %d\n", ntohl((uint32_t) &netlong));
+  //printf("Network long: %d\n", netlong);
+  //printf("address: %d\n", ntohl((uint32_t) &netlong));
   send_dgram(sockfd, &netlong, sizeof(uint32_t), p->ai_addr, p->ai_addrlen, 1);
 
 
   char* curr_dgram = (char*) malloc((1 + DGRAM_SIZE) * (sizeof(char)));
+//  char header[HEADER_SIZE];
+  uint32_t packetnum;
+  for (packetnum = 0; packetnum <  info.st_size/DGRAM_SIZE + 1; packetnum++) {
+    
+    sprintf(curr_dgram, "%d", packetnum);
+    int i;
+    for (i = 0; i < DGRAM_SIZE; i++) {
+      curr_dgram[i+HEADER_SIZE] = content[packetnum*DGRAM_SIZE+i];
+    }
 
- // int packetnum;
- // for (packetnum = 
+    send_dgram(sockfd, curr_dgram, DGRAM_SIZE+HEADER_SIZE, p->ai_addr, p->ai_addrlen, 0);
+
+  }
   
  // curr_dgram[0] = (char) header;
  // int i;
