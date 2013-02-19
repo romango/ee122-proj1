@@ -67,7 +67,7 @@ int main(int argc, char *argv[])
 {
   int sockfd;
   struct addrinfo hints, *servinfo, *p;
-  int rv;
+  int rv, i;
   int numbytes;
   memset(&hints, 0, sizeof hints);
   hints.ai_family = AF_INET;
@@ -104,29 +104,59 @@ int main(int argc, char *argv[])
     fprintf(stderr, "Error reading file.\n");
     exit(1);
   }
-
   printf("File Size: %d\n", (int)info.st_size);
   char* content = (char*) malloc(info.st_size * (sizeof (char)));
   FILE *fp = fopen(FILEPATH, "rb");
   fread(content, info.st_size, 1, fp);
 
+
   // send the file size
   uint32_t netlong = htonl((uint32_t) info.st_size);
   send_dgram(sockfd, &netlong, sizeof(uint32_t), p->ai_addr, p->ai_addrlen, 1);
 
+
+  // send the file
   char* curr_dgram = (char*) malloc((HEADER_SIZE + DGRAM_SIZE) * (sizeof(char)));
   uint32_t packetnum;
   for (packetnum = 0; packetnum <  ceil(((double) info.st_size)/DGRAM_SIZE); packetnum++) {
     memcpy(curr_dgram, &packetnum, 4);
-    //sprintf(curr_dgram, "%d", packetnum);
-    int i;
     for (i = 0; i < MIN(DGRAM_SIZE, info.st_size - packetnum*DGRAM_SIZE); i++) {
       curr_dgram[i+HEADER_SIZE] = content[packetnum*DGRAM_SIZE+i];
     }
     printf("Sending part %d of %d...\n", packetnum+1, (int) ceil(((double) info.st_size)/DGRAM_SIZE));
-    send_dgram(sockfd, curr_dgram, HEADER_SIZE+MIN(DGRAM_SIZE, info.st_size - packetnum*DGRAM_SIZE), p->ai_addr, p->ai_addrlen, 1);
+    send_dgram(sockfd, curr_dgram, HEADER_SIZE+MIN(DGRAM_SIZE, info.st_size - packetnum*DGRAM_SIZE), p->ai_addr, p->ai_addrlen, 0);
 
   }
+
+
+  // Listen for requests for missing packets and resend.
+  while (1) {
+    struct sockaddr from;
+    socklen_t fromlen;
+    fromlen = sizeof(from);
+
+    uint32_t recvbuff[1];
+    printf("Waiting for confirmation...\n");
+
+    numbytes = recvfrom(sockfd, recvbuff, 4, 0, &from, &fromlen);
+    if (numbytes == -1) {
+      printf("Error in recieving missing packets");
+      exit(1);
+    }
+    if (recvbuff[0] == 0xffffffff) {
+      printf("Data sent successfully.\n");
+      break;
+    } else {
+      packetnum = ntohl(recvbuff[0]);
+      printf("Packet #%d was lost and was requested.\n", packetnum);
+      for (i = 0; i < MIN(DGRAM_SIZE, info.st_size - packetnum*DGRAM_SIZE); i++) {
+        curr_dgram[i+HEADER_SIZE] = content[packetnum*DGRAM_SIZE+i];
+      }
+      send_dgram(sockfd, curr_dgram, HEADER_SIZE+MIN(DGRAM_SIZE, info.st_size - packetnum*DGRAM_SIZE), p->ai_addr, p->ai_addrlen, 0);
+    }
+  }
+
+ 
   
  // curr_dgram[0] = (char) header;
  // int i;

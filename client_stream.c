@@ -9,15 +9,16 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-
+#include <sys/stat.h>
+#include <time.h>
 #define IP "67.188.126.64"
 #define PORT "4444"
-#define OUTPATH = "output.png"
+#define OUTPATH "output.png"
 //#define MAXDATASIZE 5000000
 
 int recieve_data(int sockfd, char* buf, size_t len) {
   int numbytes;
-  numbytes = recv(sockfd, buf, len, 0);
+  numbytes = recv(sockfd, buf, len, MSG_WAITALL);
   if (numbytes == -1) {
     perror("recv");
     exit(1);
@@ -37,6 +38,7 @@ int main(int argc, char* argv[])
   struct addrinfo hints, *servinfo, *p;
   char s[INET_ADDRSTRLEN];
   int sockfd, numbytes;
+  clock_t t;
   //char buf[MAXDATASIZE];
 
   memset(&hints, 0, sizeof hints);
@@ -84,17 +86,19 @@ int main(int argc, char* argv[])
   datasize = ntohl(datasize);
 
   printf("Expected Data Size: %d\n", datasize);
-  data = (char*) malloc(datasize);
-  int recvsofar = 0;
-  while (recvsofar < datasize) {
-    numbytes = recieve_data(sockfd, data + recvsofar, datasize-recvsofar);
-    recvsofar += numbytes;
-    if (numbytes != 0) {
-      printf("Recieved total %d bytes.\n", recvsofar);
-    }
-  }
-  FILE *fp = fopen( "output.png" , "wb");
-  fwrite(data, sizeof(char), datasize, fp);
+  data = (char*) calloc(datasize , sizeof(char));
+  
+
+
+  t = clock();
+  recieve_data(sockfd, data, datasize);
+  t = clock() - t;
+  printf("Time to recieve data: %f sec.\n", ((float) t)/CLOCKS_PER_SEC);
+
+
+  FILE *fp = fopen(OUTPATH , "wb");
+  fwrite(data, datasize,1, fp);
+  fclose(fp);
 
 //  numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0);
 //  if (numbytes == -1) {
