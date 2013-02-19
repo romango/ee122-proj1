@@ -127,6 +127,11 @@ int main(int argc, char *argv[])
     send_dgram(sockfd, curr_dgram, HEADER_SIZE+MIN(DGRAM_SIZE, info.st_size - packetnum*DGRAM_SIZE), p->ai_addr, p->ai_addrlen, 0);
 
   }
+  printf("Completed sending data. Signaling end of data transfer.\n");
+
+  // send a signal to say that we're done sending
+  uint32_t confirmation = -1;
+  send_dgram(sockfd, &confirmation, 4, p->ai_addr, p->ai_addrlen, 0);
 
 
   // Listen for requests for missing packets and resend.
@@ -140,11 +145,11 @@ int main(int argc, char *argv[])
 
     numbytes = recvfrom(sockfd, recvbuff, 4, 0, &from, &fromlen);
     if (numbytes == -1) {
-      printf("Error in recieving missing packets");
-      exit(1);
+      printf("Did not recieve confirmation, resending end signal.\n");
+      send_dgram(sockfd, &confirmation, 4, p->ai_addr, p->ai_addrlen, 0);
     }
     if (recvbuff[0] == 0xffffffff) {
-      printf("Data sent successfully.\n");
+      printf("Confirmation recieved, data sent successfully.\n");
       break;
     } else {
       packetnum = ntohl(recvbuff[0]);
