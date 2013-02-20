@@ -22,9 +22,9 @@
 #define HEADER_SIZE 4
 #define TIMEOUT 5 // in seconds
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
-#define DELAY 0 // in microseconds
+#define DELAY 5000000 // in microseconds
 /* Whether or not the delay is random (0, 2*DELAY) or deterministic */
-#define RAND_DELAY 0
+#define RAND_DELAY 1
 #define CONFIRM 0
 
 long timevaldiff(struct timeval *starttime, struct timeval *finishtime)
@@ -220,16 +220,16 @@ int main(int argc, char *argv[])
       if (numbytes == -1) {
         printf("Did not recieve confirmation, resending end signal.\n");
         send_dgram(sockfd, &confirmation, 4, p->ai_addr, p->ai_addrlen, 0, NULL, NULL);
-      }
-      if (recvbuff[0] == 0xffffffff) {
+        
+      } else if (recvbuff[0] == 0xffffffff) {
         gettimeofday(&tv3, NULL);
         printf("Confirmation recieved, all data sent successfully in %f seconds.\n", ((float) timevaldiff(&tv1, &tv3))/1000);
         printf("Total %d packets lost and rerequested.\n", lostpackets[0]);
         break;
       } else {
         packetnum = ntohl(recvbuff[0]);
-        printf("Packet #%d was lost and was requested.\n", packetnum);
-        *lostpackets += 1;
+        printf("Packet #%u was lost and was requested.\n", packetnum);
+        lostpackets[0] += 1;
         memcpy(curr_dgram, &packetnum, 4);
         for (i = 0; i < MIN(DGRAM_SIZE, info.st_size - packetnum*DGRAM_SIZE); i++) {
           curr_dgram[i+HEADER_SIZE] = content[packetnum*DGRAM_SIZE+i];
