@@ -13,6 +13,7 @@
 #include <netdb.h>
 #include <sys/stat.h>
 #include <math.h>
+#include <time.h>
 #define SERVERPORT "4444"
 #define IP "67.188.126.64"
 #define FILEPATH "spongebob.jpg"
@@ -20,10 +21,16 @@
 #define HEADER_SIZE 4
 #define TIMEOUT 10 // in seconds
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define DELAY 0 // in microseconds
+#define CONFIRM 0
+
 
 int send_dgram(int sockfd, const void *buf, size_t len, 
-  const struct sockaddr *to, socklen_t tolen, int check) {
+  const struct sockaddr *to, socklen_t tolen, int check, float* roundtripsec, int* lostpackets) {
 
+  clock_t t;
+
+  t = clock();
   int numbytes = sendto(sockfd, buf, len, 0, to, tolen);
   if (numbytes == -1) {
     perror("talker: sendto");
@@ -45,13 +52,17 @@ int send_dgram(int sockfd, const void *buf, size_t len,
     //printf("%d\n", numbytes);
     if (numbytes == -1) { // operation timed out
       printf("Confirmation not recieved, sending again...\n");
-      send_dgram(sockfd, buf, len, to, tolen, check);
+      //t = clock();
+      *lostpackets += 1;
+      send_dgram(sockfd, buf, len, to, tolen, check, roundtripsec, lostpackets);
     } else {
       if (0xffffffff == recvbuff[0]) {
-        printf("Message reciept confirmed.\n");
+        t = clock() - t;
+        printf("Message reciept confirmed in %f seconds.\n", ((float) t)/CLOCKS_PER_SEC);
+        *roundtripsec +=  ((float) t)/CLOCKS_PER_SEC;
       } else {
         printf("Message not confirmed, expecting 0xffffffff recieved %d\n", recvbuff[0]);
-        send_dgram(sockfd, buf, len, to, tolen, check);
+        send_dgram(sockfd, buf, len, to, tolen, check, roundtripsec, lostpackets);
       }
     }  
   }
@@ -62,13 +73,20 @@ int send_dgram(int sockfd, const void *buf, size_t len,
 
 
 
-// the port users will be connecting to
 int main(int argc, char *argv[])
 {
   int sockfd;
   struct addrinfo hints, *servinfo, *p;
   int rv, i;
   int numbytes;
+  clock_t t1, t2;
+  struct timeval tv, timestamp;
+  float* roundtripsec;
+  int* lostpackets;
+//  float totaltime;
+
+//  printf("%d\n", sizeof(struct timeval));
+
   memset(&hints, 0, sizeof hints);
   hints.ai_family = AF_INET;
   hints.ai_socktype = SOCK_DGRAM;
@@ -92,7 +110,6 @@ int main(int argc, char *argv[])
 
 
   // set socket timeout
-  struct timeval tv;
   tv.tv_sec = TIMEOUT;
   setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval*)&tv, sizeof(struct timeval));
 
@@ -110,70 +127,92 @@ int main(int argc, char *argv[])
   fread(content, info.st_size, 1, fp);
 
 
+
   // send the file size
   uint32_t netlong = htonl((uint32_t) info.st_size);
-  send_dgram(sockfd, &netlong, sizeof(uint32_t), p->ai_addr, p->ai_addrlen, 1);
+  send_dgram(sockfd, &netlong, sizeof(uint32_t), p->ai_addr, p->ai_addrlen, 1, roundtripsec, lostpackets);
+
 
 
   // send the file
   char* curr_dgram = (char*) malloc((HEADER_SIZE + DGRAM_SIZE) * (sizeof(char)));
   uint32_t packetnum;
-  for (packetnum = 0; packetnum <  ceil(((double) info.st_size)/DGRAM_SIZE); packetnum++) {
+  int numofpackets = (int) ceil(((double) info.st_size)/DGRAM_SIZE);
+  t1 = clock();
+  *roundtripsec = 0;
+  *lostpackets = 0;
+  for (packetnum = 0; packetnum < numofpackets; packetnum++) {
+    // add header
     memcpy(curr_dgram, &packetnum, 4);
+
     for (i = 0; i < MIN(DGRAM_SIZE, info.st_size - packetnum*DGRAM_SIZE); i++) {
       curr_dgram[i+HEADER_SIZE] = content[packetnum*DGRAM_SIZE+i];
     }
-    printf("Sending part %d of %d...\n", packetnum+1, (int) ceil(((double) info.st_size)/DGRAM_SIZE));
-    send_dgram(sockfd, curr_dgram, HEADER_SIZE+MIN(DGRAM_SIZE, info.st_size - packetnum*DGRAM_SIZE), p->ai_addr, p->ai_addrlen, 0);
-
+    printf("Sending part %d of %d...\n", packetnum+1, numofpackets);
+    send_dgram(sockfd, curr_dgram, HEADER_SIZE+MIN(DGRAM_SIZE, info.st_size - packetnum*DGRAM_SIZE), 
+        p->ai_addr, p->ai_addrlen, CONFIRM, roundtripsec, lostpackets);
+ //   if (CONFIRM) { // If doing CONFIRM method, keep track of round trip times.
+ //     totaltime += *roundtripsec;
+ //   }
+     
+    // add a delay
+    usleep(DELAY);
   }
-  printf("Completed sending data. Signaling end of data transfer.\n");
+  t2 = clock() - t1;
+  printf("Sent %d packets in %f seconds.\n", numofpackets, ((float) t2)/CLOCKS_PER_SEC);
+  
+  if (CONFIRM) {
+    printf("Average packet roundtrip time: %f\n", *roundtripsec / numofpackets);
+    printf("Number of lost packets: %d\n", *lostpackets);
+  }
 
-  // send a signal to say that we're done sending
-  uint32_t confirmation = -1;
-  send_dgram(sockfd, &confirmation, 4, p->ai_addr, p->ai_addrlen, 0);
+
+  if (!CONFIRM) {
 
 
-  // Listen for requests for missing packets and resend.
-  while (1) {
-    struct sockaddr from;
-    socklen_t fromlen;
-    fromlen = sizeof(from);
+    // send a signal to say that we're done sending
+    printf("Signaling end of data transfer.\n");
+    uint32_t confirmation = -1;
+    send_dgram(sockfd, &confirmation, 4, p->ai_addr, p->ai_addrlen, 0, NULL, NULL);
 
-    uint32_t recvbuff[1];
-    printf("Waiting for confirmation...\n");
 
-    numbytes = recvfrom(sockfd, recvbuff, 4, 0, &from, &fromlen);
-    if (numbytes == -1) {
-      printf("Did not recieve confirmation, resending end signal.\n");
-      send_dgram(sockfd, &confirmation, 4, p->ai_addr, p->ai_addrlen, 0);
-    }
-    if (recvbuff[0] == 0xffffffff) {
-      printf("Confirmation recieved, data sent successfully.\n");
-      break;
-    } else {
-      packetnum = ntohl(recvbuff[0]);
-      printf("Packet #%d was lost and was requested.\n", packetnum);
-      for (i = 0; i < MIN(DGRAM_SIZE, info.st_size - packetnum*DGRAM_SIZE); i++) {
-        curr_dgram[i+HEADER_SIZE] = content[packetnum*DGRAM_SIZE+i];
+
+
+    // Listen for requests for missing packets and resend.
+    *lostpackets = 0;
+    while (1) {
+      struct sockaddr from;
+      socklen_t fromlen;
+      fromlen = sizeof(from);
+
+      uint32_t recvbuff[1];
+      printf("Waiting for confirmation...\n");
+
+      numbytes = recvfrom(sockfd, recvbuff, 4, 0, &from, &fromlen);
+      if (numbytes == -1) {
+        printf("Did not recieve confirmation, resending end signal.\n");
+        send_dgram(sockfd, &confirmation, 4, p->ai_addr, p->ai_addrlen, 0, NULL, NULL);
       }
-      send_dgram(sockfd, curr_dgram, HEADER_SIZE+MIN(DGRAM_SIZE, info.st_size - packetnum*DGRAM_SIZE), p->ai_addr, p->ai_addrlen, 0);
+      if (recvbuff[0] == 0xffffffff) {
+        t2 = clock() - t1;
+        printf("Confirmation recieved, all data sent successfully in %f seconds.\n", ((float) t2)/CLOCKS_PER_SEC);
+        printf("Total %d packets lost and rerequested.\n", *lostpackets);
+        break;
+      } else {
+        packetnum = ntohl(recvbuff[0]);
+        printf("Packet #%d was lost and was requested.\n", packetnum);
+        *lostpackets += 1;
+        memcpy(curr_dgram, &packetnum, 4);
+        for (i = 0; i < MIN(DGRAM_SIZE, info.st_size - packetnum*DGRAM_SIZE); i++) {
+          curr_dgram[i+HEADER_SIZE] = content[packetnum*DGRAM_SIZE+i];
+        }
+        send_dgram(sockfd, curr_dgram, HEADER_SIZE+MIN(DGRAM_SIZE, info.st_size - packetnum*DGRAM_SIZE), p->ai_addr, p->ai_addrlen, 0, NULL, NULL);
+      }
     }
+
+
   }
 
- 
-  
- // curr_dgram[0] = (char) header;
- // int i;
- // for (i = 1
-
-  
-
-
-//numbytes = sendto(sockfd, content, info.st_size, 0,p->ai_addr, p->ai_addrlen);
-
-
-  //send_dgram(sockfd, content, 4, p->ai_addr, p->ai_addrlen, 0);
 
 
 
