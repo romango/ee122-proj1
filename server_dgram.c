@@ -36,8 +36,8 @@ void send_dgram(int sockfd, const void *buf, size_t len,
 float timevaldiff(struct timeval *starttime, struct timeval *finishtime)
 {
   float msec;
-  msec=(finishtime->tv_sec-starttime->tv_sec)*1000;
-  msec+=(finishtime->tv_usec-starttime->tv_usec)/(float)1000;
+  msec= (float) (finishtime->tv_sec-starttime->tv_sec)*1000;
+  msec+=((float) (finishtime->tv_usec-starttime->tv_usec))/1000;
   return msec;
 }
 
