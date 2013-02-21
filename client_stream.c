@@ -13,8 +13,16 @@
 #include <time.h>
 #define IP "67.188.126.64"
 #define PORT "4444"
-#define OUTPATH "output.png"
-//#define MAXDATASIZE 5000000
+#define OUTPATH "output.jpg"
+
+long timevaldiff(struct timeval *starttime, struct timeval *finishtime)
+{
+  long msec;
+  msec=(finishtime->tv_sec-starttime->tv_sec)*1000;
+  msec+=(finishtime->tv_usec-starttime->tv_usec)/1000;
+  return msec;
+}
+
 
 int recieve_data(int sockfd, char* buf, size_t len) {
   int numbytes;
@@ -38,8 +46,7 @@ int main(int argc, char* argv[])
   struct addrinfo hints, *servinfo, *p;
   char s[INET_ADDRSTRLEN];
   int sockfd, numbytes;
-  clock_t t;
-  //char buf[MAXDATASIZE];
+  struct timeval tv1, tv2;
 
   memset(&hints, 0, sizeof hints);
   hints.ai_family = AF_INET;
@@ -90,24 +97,19 @@ int main(int argc, char* argv[])
   
 
 
-  t = clock();
+  //t = clock();
+  gettimeofday(&tv1, NULL);
   recieve_data(sockfd, data, datasize);
-  t = clock() - t;
-  printf("Time to recieve data: %f sec.\n", ((float) t)/CLOCKS_PER_SEC);
+  //t = clock() - t;
+  gettimeofday(&tv2, NULL);
+
+  printf("Time to recieve data: %f sec.\n", ((float) timevaldiff(&tv1, &tv2))/1000);
 
 
   FILE *fp = fopen(OUTPATH , "wb");
   fwrite(data, datasize,1, fp);
   fclose(fp);
 
-//  numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0);
-//  if (numbytes == -1) {
-//    perror("recv");
-//    exit(1);
-//  }
-//  buf[numbytes] = '\0';
-//  printf("client: received '%s'\n",buf);
-//  printf("Recieved %d bytes.\n", numbytes);
   close(sockfd);
   free(data);
   return 0;
